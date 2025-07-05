@@ -6,6 +6,8 @@ This document provides detailed instructions for setting up and using the OTA up
 
 The OTA (Over-The-Air) update feature allows you to update the firmware on your ESP32 device wirelessly through a web interface. This eliminates the need to physically connect your device to a computer for firmware updates.
 
+**Important**: OTA updates are available even when the device is waiting for a Bluetooth connection. This allows for remote troubleshooting and updates without requiring a device connection first.
+
 ## Requirements
 
 - ESP32 device with WiFi capability (LILYGO T-CAN485 board)
