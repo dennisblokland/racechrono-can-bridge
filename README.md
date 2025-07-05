@@ -56,4 +56,11 @@ Once WiFi is configured and the device is connected to your network:
 3. Upload new firmware (.bin file) through the web interface
 4. The device will automatically reboot with the new firmware
 
-**Note**: OTA updates require the device to be connected to WiFi. If WiFi is not configured, the device will work normally but OTA updates will be disabled.
+For detailed OTA setup instructions, troubleshooting, and advanced configuration, see [docs/OTA_SETUP.md](docs/OTA_SETUP.md).
+
+## Important Notes
+
+- **Existing functionality preserved**: The CAN-BLE bridge functionality continues to work exactly as before, even without WiFi configuration
+- **WiFi is optional**: OTA updates are an optional feature - the device works normally without WiFi
+- **No performance impact**: WiFi/OTA functionality adds minimal overhead to the main CAN-BLE operations
+- **Secure by default**: WiFi credentials are never committed to the repository and are stored in git-ignored files
