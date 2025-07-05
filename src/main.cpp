@@ -202,6 +202,11 @@ void waitForConnection()
   bool lastPrintHadNewline = false;
   while (!RaceChronoBle.waitForConnection(1000))
   {
+#ifdef WIFI_CONFIGURED
+    // Handle OTA updates while waiting for connection
+    server.handleClient();
+#endif
+    
     Serial.print(".");
     if ((++iteration) % 10 == 0)
     {
