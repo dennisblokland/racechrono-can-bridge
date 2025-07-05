@@ -2,8 +2,19 @@
 #include <RaceChrono.h>
 #include <Arduino.h>
 #include <CAN_config.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ElegantOTA.h>
 
 #include "config.h"
+
+// Check if WiFi configuration exists
+#if __has_include("wifi_config.h")
+#include "wifi_config.h"
+#define WIFI_CONFIGURED
+#else
+#warning "WiFi configuration not found. Copy wifi_config.h.template to wifi_config.h and set your WiFi credentials for OTA functionality."
+#endif
 CAN_device_t CAN_cfg;
 const int rx_queue_size = 10;
 
@@ -25,6 +36,10 @@ uint32_t loop_iteration = 0;
 uint32_t last_time_num_can_bus_timeouts_sent_ms = 0;
 uint16_t num_can_bus_timeouts = 0;
 
+#ifdef WIFI_CONFIGURED
+WebServer server(OTA_PORT);
+#endif
+
 // Forward declarations to help put code in a natural reading order.
 void waitForConnection();
 void bufferNewPacket(uint32_t pid, uint8_t *data, uint8_t data_length);
@@ -32,6 +47,10 @@ void handleOneBufferedPacket();
 void flushBufferedPackets();
 void sendNumCanBusTimeouts();
 void resetSkippedUpdatesCounters();
+#ifdef WIFI_CONFIGURED
+void setupWiFi();
+void setupOTA();
+#endif
 
 void dumpMapToSerial()
 {
@@ -159,6 +178,16 @@ void setup()
   {
   }
 
+  Serial.println("ESP32 RaceChrono CAN Bridge starting...");
+
+#ifdef WIFI_CONFIGURED
+  setupWiFi();
+  setupOTA();
+#else
+  Serial.println("WiFi not configured. OTA updates disabled.");
+  Serial.println("To enable OTA: copy wifi_config.h.template to wifi_config.h and set your WiFi credentials.");
+#endif
+
   Serial.println("Setting up BLE...");
   RaceChronoBle.setUp(DEVICE_NAME, &raceChronoHandler);
   RaceChronoBle.startAdvertising();
@@ -196,6 +225,11 @@ void waitForConnection()
 void loop()
 {
   loop_iteration++;
+
+#ifdef WIFI_CONFIGURED
+  // Handle OTA updates
+  server.handleClient();
+#endif
 
   // First, verify that we have both Bluetooth and CAN up and running.
 
@@ -339,3 +373,64 @@ void resetSkippedUpdatesCounters()
   } resetSkippedUpdatesCounter;
   pidMap.forEach(resetSkippedUpdatesCounter);
 }
+
+#ifdef WIFI_CONFIGURED
+void setupWiFi()
+{
+  Serial.println("Setting up WiFi...");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println();
+    Serial.print("WiFi connected! IP address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println();
+    Serial.println("WiFi connection failed. OTA updates will not be available.");
+  }
+}
+
+void setupOTA()
+{
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected. Skipping OTA setup.");
+    return;
+  }
+  
+  Serial.println("Setting up OTA...");
+  
+  // ElegantOTA callbacks
+  ElegantOTA.onStart([]() {
+    Serial.println("OTA update started!");
+  });
+  
+  ElegantOTA.onProgress([](size_t current, size_t final) {
+    Serial.printf("OTA Progress: %u%%\n", (current * 100) / final);
+  });
+  
+  ElegantOTA.onEnd([](bool success) {
+    if (success) {
+      Serial.println("OTA update completed successfully!");
+    } else {
+      Serial.println("OTA update failed!");
+    }
+  });
+  
+  ElegantOTA.begin(&server, OTA_USERNAME, OTA_PASSWORD);
+  server.begin();
+  
+  Serial.println("OTA ready!");
+  Serial.print("Open http://");
+  Serial.print(WiFi.localIP());
+  Serial.print(":");
+  Serial.print(OTA_PORT);
+  Serial.println(" in your browser to upload firmware");
+}
+#endif
