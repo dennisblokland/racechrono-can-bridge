@@ -4,7 +4,7 @@
 #define RACECHRONO_BIY_BLE_DEVICE_CONFIG_H
 
 // Change the value to customize the name of your device.
-#define DEVICE_NAME "BLE CAN device demo"
+#define DEVICE_NAME "RaceChrono CAN Bridge"
 
 // We use RaceChronoPidMap to keep track of stuff for each CAN ID.
 // In this implementation, we're going to ignore "update intervals" requested by
