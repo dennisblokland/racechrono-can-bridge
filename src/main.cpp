@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ElegantOTA.h>
+#include <FastLED.h>
 
 #include "config.h"
 
@@ -36,6 +37,43 @@ uint32_t loop_iteration = 0;
 uint32_t last_time_num_can_bus_timeouts_sent_ms = 0;
 uint16_t num_can_bus_timeouts = 0;
 
+CRGB leds[1];
+
+enum LedState { LED_BOOT, LED_WAITING_BLE, LED_CONNECTED, LED_CAN_FLASH };
+LedState ledState = LED_BOOT;
+uint32_t ledStateChangedMs = 0;
+uint32_t lastLedUpdateMs = 0;
+
+void setLedState(LedState state) {
+  ledState = state;
+  ledStateChangedMs = millis();
+}
+
+void updateLed() {
+  uint32_t now = millis();
+  if (now - lastLedUpdateMs < 50) return;
+  lastLedUpdateMs = now;
+
+  switch (ledState) {
+    case LED_BOOT:
+      leds[0] = CRGB::White;
+      break;
+    case LED_WAITING_BLE:
+      leds[0] = ((now / 500) % 2 == 0) ? CRGB::Blue : CRGB::Black;
+      break;
+    case LED_CONNECTED:
+      leds[0] = CRGB::Green;
+      break;
+    case LED_CAN_FLASH:
+      leds[0] = CRGB::Cyan;
+      if (now - ledStateChangedMs > 100) {
+        ledState = LED_CONNECTED;
+      }
+      break;
+  }
+  FastLED.show();
+}
+
 #ifdef WIFI_CONFIGURED
 WebServer server(OTA_PORT);
 #endif
@@ -47,6 +85,8 @@ void handleOneBufferedPacket();
 void flushBufferedPackets();
 void sendNumCanBusTimeouts();
 void resetSkippedUpdatesCounters();
+void setLedState(LedState state);
+void updateLed();
 #ifdef WIFI_CONFIGURED
 void setupWiFi();
 void setupOTA();
@@ -161,6 +201,11 @@ public:
 
 void setup()
 {
+  FastLED.addLeds<WS2812B, WS2812_PIN, GRB>(leds, 1);
+  FastLED.setBrightness(30);
+  setLedState(LED_BOOT);
+  updateLed();
+
   pinMode(PIN_5V_EN, OUTPUT);
   digitalWrite(PIN_5V_EN, HIGH);
   pinMode(CAN_SE_PIN, OUTPUT);
@@ -193,20 +238,25 @@ void setup()
   RaceChronoBle.startAdvertising();
 
   Serial.println("BLE is set up, waiting for an incoming connection.");
+  setLedState(LED_WAITING_BLE);
   waitForConnection();
+  setLedState(LED_CONNECTED);
 }
 
 void waitForConnection()
 {
   uint32_t iteration = 0;
+  uint8_t tickCount = 0;
   bool lastPrintHadNewline = false;
-  while (!RaceChronoBle.waitForConnection(1000))
+  while (!RaceChronoBle.waitForConnection(100))
   {
 #ifdef WIFI_CONFIGURED
     // Handle OTA updates while waiting for connection
     server.handleClient();
 #endif
-    
+    updateLed();
+    if (++tickCount < 10) continue;
+    tickCount = 0;
     Serial.print(".");
     if ((++iteration) % 10 == 0)
     {
@@ -240,13 +290,17 @@ void loop()
 
   // Not clear how heavy is the isConnected() call. Only check the connectivity
   // every 100 iterations to avoid stalling the CAN bus loop.
+  updateLed();
+
   if ((loop_iteration % 100) == 0 && !RaceChronoBle.isConnected())
   {
     Serial.println("RaceChrono disconnected!");
     raceChronoHandler.handleDisconnect();
+    setLedState(LED_WAITING_BLE);
 
     Serial.println("Waiting for a new connection.");
     waitForConnection();
+    setLedState(LED_CONNECTED);
     sendNumCanBusTimeouts();
   }
 
@@ -272,6 +326,7 @@ void loop()
 
     bufferNewPacket(pid, rx_frame.data.u8, data_length);
     lastCanMessageReceivedMs = millis();
+    setLedState(LED_CAN_FLASH);
   }
 
   handleOneBufferedPacket();
